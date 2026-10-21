@@ -1,4 +1,4 @@
-# Laravel Blade Navigator
+# Ades Laravel Blade Navigator
 
 Ekstensi VS Code untuk membuka Blade dengan **Ctrl+klik** atau **F12 / Go to Definition** dari PHP. Di macOS gunakan Cmd+klik.
 
@@ -20,13 +20,13 @@ Modules/Mahasiswa/resources/views/pages/tugas-akhir/bimbingan.blade.php
 
 1. Di VS Code buka Extensions (Ctrl+Shift+X).
 2. Pilih menu **… → Install from VSIX…**.
-3. Pilih `alvinade98-laravel-blade-navigator-0.1.0.vsix`.
+3. Pilih `alvinade98-laravel-blade-navigator-0.1.1.vsix`.
 4. Buka folder proyek Laravel, buka controller, lalu Ctrl+klik ekspresi view. Bila diperlukan jalankan **Developer: Reload Window**.
 
 Atau melalui terminal:
 
 ```sh
-code --install-extension alvinade98-laravel-blade-navigator-0.1.0.vsix
+code --install-extension alvinade98-laravel-blade-navigator-0.1.1.vsix
 ```
 
 ## Dukungan
