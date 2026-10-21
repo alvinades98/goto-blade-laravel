@@ -6,7 +6,7 @@ exports.run = async function () {
   const doc = await vscode.workspace.openTextDocument(file);
   await vscode.window.showTextDocument(doc);
   const offset = doc.getText().indexOf(process.env.BLADE_SMOKE_EXPRESSION || "$view+'.partials.summary'".replace('+', '.'));
-  const extension = vscode.extensions.getExtension('alvinade98.laravel-blade-navigator');
+  const extension = vscode.extensions.getExtension('alvinade98.alvinade98-laravel-blade-navigator');
   await extension.activate();
   const started = Date.now();
   const links = await vscode.commands.executeCommand('vscode.executeDefinitionProvider', doc.uri, doc.positionAt(offset + 2));
