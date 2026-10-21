@@ -1,0 +1,27 @@
+const vscode = require('vscode');
+const fs = require('node:fs');
+exports.run = async function () {
+  const file = process.env.BLADE_SMOKE_FILE;
+  const expected = process.env.BLADE_SMOKE_TARGET;
+  const doc = await vscode.workspace.openTextDocument(file);
+  await vscode.window.showTextDocument(doc);
+  const offset = doc.getText().indexOf(process.env.BLADE_SMOKE_EXPRESSION || "$view+'.partials.summary'".replace('+', '.'));
+  const extension = vscode.extensions.getExtension('alvinade98.laravel-blade-navigator');
+  await extension.activate();
+  const started = Date.now();
+  const links = await vscode.commands.executeCommand('vscode.executeDefinitionProvider', doc.uri, doc.positionAt(offset + 2));
+  const targets = (links || []).map(link => (link.targetUri || link.uri).fsPath);
+  const controllers = await vscode.workspace.findFiles(new vscode.RelativePattern(vscode.workspace.workspaceFolders[0], '{app,Modules}/**/*Controller.php'));
+  const result = { language: doc.languageId, offset, controllers: controllers.length, elapsedMs: Date.now() - started, targets };
+  fs.writeFileSync(process.env.BLADE_SMOKE_RESULT, JSON.stringify(result, null, 2));
+  if (!targets.includes(expected)) throw Error('Missing expected target: ' + JSON.stringify(result));
+  if (!file.endsWith('.blade.php')) return;
+  await vscode.languages.setTextDocumentLanguage(doc, 'blade');
+  const bladeDefinitions = await vscode.commands.executeCommand('vscode.executeDefinitionProvider', doc.uri, doc.positionAt(offset + 2));
+  if (!bladeDefinitions.some(link => (link.targetUri || link.uri).fsPath === expected)) throw Error('Blade language definition missing');
+  const documentLinks = await vscode.commands.executeCommand('vscode.executeLinkProvider', doc.uri, 100);
+  if (!documentLinks.some(link => link.target?.fsPath === expected && link.range.contains(doc.positionAt(offset + 2)))) throw Error('Ctrl+click document link missing');
+  result.bladeDefinition = true;
+  result.documentLink = true;
+  fs.writeFileSync(process.env.BLADE_SMOKE_RESULT, JSON.stringify(result, null, 2));
+};

@@ -1,0 +1,49 @@
+{
+  "name": "laravel-blade-navigator",
+  "displayName": "Laravel Blade Navigator",
+  "description": "Ctrl+click Laravel Blade views, including concatenated controller properties and module namespaces.",
+  "version": "0.1.0",
+  "publisher": "alvinade98",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:php",
+    "onLanguage:blade",
+    "workspaceContains:**/*.blade.php"
+  ],
+  "main": "./src/extension.js",
+  "scripts": {
+    "test": "node --test",
+    "package": "vsce package --allow-missing-repository"
+  },
+  "contributes": {
+    "configuration": {
+      "title": "Laravel Blade Navigator",
+      "properties": {
+        "laravelBladeNavigator.namespaces": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": "Custom view namespaces mapped to view directories relative to the Laravel project root. Example: {\"mahasiswa\": [\"Modules/Mahasiswa/resources/views\"]}."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "php-parser": "^3.7.0"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^4.0.0"
+  },
+  "icon": "images/icon.png"
+}
