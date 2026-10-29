@@ -2,7 +2,7 @@
   "name": "alvinade98-laravel-blade-navigator",
   "displayName": "Ades Laravel Blade Navigator",
   "description": "Ctrl+click Laravel Blade views, including concatenated controller properties and module namespaces.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "alvinade98",
   "license": "MIT",
   "engines": {

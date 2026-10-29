@@ -20,13 +20,13 @@ Modules/Mahasiswa/resources/views/pages/tugas-akhir/bimbingan.blade.php
 
 1. Di VS Code buka Extensions (Ctrl+Shift+X).
 2. Pilih menu **… → Install from VSIX…**.
-3. Pilih `alvinade98-laravel-blade-navigator-0.1.1.vsix`.
+3. Pilih `alvinade98-laravel-blade-navigator-0.1.2.vsix`.
 4. Buka folder proyek Laravel, buka controller, lalu Ctrl+klik ekspresi view. Bila diperlukan jalankan **Developer: Reload Window**.
 
 Atau melalui terminal:
 
 ```sh
-code --install-extension alvinade98-laravel-blade-navigator-0.1.1.vsix
+code --install-extension alvinade98-laravel-blade-navigator-0.1.2.vsix
 ```
 
 ## Dukungan
