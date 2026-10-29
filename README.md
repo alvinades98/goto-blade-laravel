@@ -31,7 +31,7 @@ code --install-extension alvinade98-laravel-blade-navigator-0.1.1.vsix
 
 ## Dukungan
 
-- Yajra DataTables: `view($this->view.'.action', ...)` di file dalam direktori `DataTables`, saat `$view` dikirim oleh controller melalui rantai `with($this->getPageData())->render(...)`, `with($this->pageData)`, atau `with('view', ...)` / `with(['view' => ...])`. Pencocokan menggunakan namespace kelas dan tipe parameter method, termasuk alias import.
+- Yajra DataTables: `view($this->view.'.action', ...)` di file dalam direktori `DataTables`, saat `$view` dikirim oleh controller melalui rantai `with($this->getPageData())->render(...)`, metode pembungkus yang mengembalikan `getPageData()` (termasuk tambahan array dengan `+`), `with($this->pageData)`, atau `with('view', ...)` / `with(['view' => ...])`. Pencocokan menggunakan namespace kelas dan tipe parameter method, termasuk alias import.
 
 - Blade: `@include`, `@includeIf`, `@extends`, dan `@component`, termasuk `$view.'.partials.status'`. Ekstensi mencari controller yang me-render Blade saat ini, lalu mengambil nilai default `protected $view` dari kelas tersebut. Ini mengikuti konvensi aplikasi yang membagikan properti controller sebagai variabel `$view` di Blade.
 

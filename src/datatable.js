@@ -35,6 +35,17 @@ function dataTableViewBases(source, targetClass) {
       if (node.kind !== 'class') continue;
       const properties = classProperties(node);
       const base = evaluate(properties.get('view'), properties);
+      function hasPageData(expression, seen = new Set()) {
+        if (expression?.kind === 'bin' && expression.type === '+') return hasPageData(expression.left, seen);
+        if (expression?.kind !== 'call' || expression.arguments.length || expression.what?.kind !== 'propertylookup' || expression.what.what?.name !== 'this') return false;
+        const name = expression.what.offset?.name;
+        if (name === 'getPageData') return true;
+        if (seen.has(name)) return false;
+        const method = node.body.find(item => item.kind === 'method' && item.name?.name === name && !item.arguments?.length);
+        const statements = method?.body?.children;
+        return statements?.length === 1 && statements[0].kind === 'return'
+          && hasPageData(statements[0].expr, new Set([...seen, name]));
+      }
       for (const method of node.body.filter(item => item.kind === 'method')) {
         const parameters = new Set((method.arguments || []).filter(arg => qualified(arg.type)?.toLowerCase() === targetClass.toLowerCase()).map(arg => arg.name.name));
         if (!parameters.size) continue;
@@ -53,7 +64,7 @@ function dataTableViewBases(source, targetClass) {
                   const entry = first.items.find(item => item.key?.value === 'view');
                   value = evaluate(entry?.value, properties);
                 } else if (first?.kind === 'propertylookup' && first.what?.name === 'this' && first.offset?.name === 'pageData') value = base;
-                else if (first?.kind === 'call' && first.what?.kind === 'propertylookup' && first.what.what?.name === 'this' && first.what.offset?.name === 'getPageData') value = base;
+                else if (hasPageData(first)) value = base;
                 // Outer with() wins when the same chain sets view repeatedly.
                 if (passed === undefined && typeof value === 'string') passed = value;
               }

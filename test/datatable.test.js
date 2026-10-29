@@ -48,3 +48,9 @@ test('declared or modified local view is not replaced by controller inference', 
   const [ref] = analyze(table.replace('function dataTable', "protected $view = 'local'; function dataTable"), false, true);
   assert.equal(ref.name, 'local.action');
 });
+test('DataTable view can come from a controller method wrapping getPageData', () => {
+  const source = controller('SurveyDataTable', '$table->with($this->tablePageData())')
+    .replace('function index(', "private function tablePageData() { return $this->getPageData() + ['scope' => 1]; } function index(");
+  assert.deepEqual(dataTableViewBases(source, target), ['upm::monev.daftar-survey']);
+  assert.deepEqual(dataTableViewBases(source.replace('$this->getPageData() +', "['view' => 'other'] +"), target), []);
+});
