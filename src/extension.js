@@ -6,7 +6,9 @@ const { analyze } = require('./analyzer');
 const { resolveView } = require('./resolver');
 const { bladeReferences, resolveBladeReference, controllerViewBases } = require('./blade');
 const { dataTableViewBases } = require('./datatable');
-const { dataTableIssues, yajraDeclaresView } = require('./lint');
+const { standardIssues, yajraDeclaresView } = require('./lint');
+// Keep in sync with laravelBladeNavigator.rules.* in package.json.
+const LAYERS = ['controller', 'service', 'formRequest', 'model', 'dataTable', 'rawSql'];
 
 async function isFile(uri) {
   try { return !!((await vscode.workspace.fs.stat(uri)).type & vscode.FileType.File); }
@@ -115,12 +117,13 @@ function activate(context) {
   const vendorView = new Map();
   const severity = { error: vscode.DiagnosticSeverity.Error, warning: vscode.DiagnosticSeverity.Warning, info: vscode.DiagnosticSeverity.Information };
   const enabled = uri => vscode.workspace.getConfiguration('laravelBladeNavigator', uri).get('dataTableDiagnostics', true);
+  // Application code only: migrations/seeders, vendor and Blade follow other rules.
+  const linted = uri => /\/(app|Modules)\//.test(uri.path) && !/\/(vendor|node_modules|database)\//.test(uri.path) && !uri.path.endsWith('.blade.php');
   function lint(document) {
-    if (document.languageId !== 'php' || document.uri.path.endsWith('.blade.php') || !enabled(document.uri)) return diagnostics.delete(document.uri);
+    if (document.languageId !== 'php' || !linted(document.uri) || !enabled(document.uri)) return diagnostics.delete(document.uri);
     return lintText(document.uri, document.getText());
   }
   async function lintText(uri, text) {
-    if (!text.includes('DataTable')) return diagnostics.delete(uri), 0;
     const root = await projectRoot({ uri }, { isCancellationRequested: false });
     if (root && !vendorView.has(root.toString())) {
       // ponytail: read once per session; reload the window after patching vendor.
@@ -137,10 +140,11 @@ function activate(context) {
       const line = lineStarts.findLastIndex(start => start <= offset);
       return new vscode.Position(line, offset - lineStarts[line]);
     };
-    const issues = dataTableIssues(text, { declaresView });
+    const rules = vscode.workspace.getConfiguration('laravelBladeNavigator.rules', uri);
+    const issues = standardIssues(text, { declaresView, rules: Object.fromEntries(LAYERS.map(layer => [layer, rules.get(layer, true)])) });
     diagnostics.set(uri, issues.map(issue => {
       const diagnostic = new vscode.Diagnostic(new vscode.Range(positionAt(issue.start), positionAt(issue.end)), issue.message, severity[issue.severity]);
-      diagnostic.source = 'Laravel DataTable';
+      diagnostic.source = 'Laravel Standar';
       return diagnostic;
     }));
     return issues.length;
@@ -149,10 +153,10 @@ function activate(context) {
   const scanned = new Set();
   const viewId = 'laravelBladeNavigator.dataTables';
   context.subscriptions.push(vscode.commands.registerCommand('laravelBladeNavigator.scanDataTables', () =>
-    vscode.window.withProgress({ location: { viewId }, title: 'Scan DataTable' }, async () => {
-      const files = await vscode.workspace.findFiles('**/{app,Modules}/**/*.php', '**/{vendor,node_modules}/**');
+    vscode.window.withProgress({ location: { viewId }, title: 'Scan standar' }, async () => {
+      const files = await vscode.workspace.findFiles('**/{app,Modules}/**/*.php', '**/{vendor,node_modules,database}/**');
       for (const uri of files) {
-        if (uri.path.endsWith('.blade.php') || !enabled(uri)) continue;
+        if (!linted(uri) || !enabled(uri)) { diagnostics.delete(uri); continue; }
         const open = vscode.workspace.textDocuments.find(doc => doc.uri.toString() === uri.toString());
         let text;
         try { text = open ? open.getText() : Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8'); } catch { continue; }
@@ -161,22 +165,62 @@ function activate(context) {
       await vscode.commands.executeCommand(viewId + '.focus');
     })));
 
-  // Sidebar: files that break the DataTable standard, each expanding to its findings.
+  // Sidebar: files that break the boilerplate standard, each expanding to its findings.
   const rank = { [vscode.DiagnosticSeverity.Error]: 0, [vscode.DiagnosticSeverity.Warning]: 1, [vscode.DiagnosticSeverity.Information]: 2 };
   const icon = { 0: ['error', 'problemsErrorIcon.foreground'], 1: ['warning', 'problemsWarningIcon.foreground'], 2: ['info', 'problemsInfoIcon.foreground'] };
   const changed = new vscode.EventEmitter();
+  let treeMode = context.workspaceState.get('treeMode', false);
+  const setTreeMode = value => {
+    treeMode = value;
+    context.workspaceState.update('treeMode', value);
+    vscode.commands.executeCommand('setContext', 'laravelBladeNavigator.treeMode', value);
+    changed.fire();
+  };
+  setTreeMode(treeMode);
+  context.subscriptions.push(
+    vscode.commands.registerCommand('laravelBladeNavigator.viewAsTree', () => setTreeMode(true)),
+    vscode.commands.registerCommand('laravelBladeNavigator.viewAsList', () => setTreeMode(false)));
+  // Tree mode: group files under their folders, like the Explorer.
+  function folderTree(files) {
+    const root = { children: new Map(), files: [] };
+    for (const file of files) {
+      const workspace = vscode.workspace.getWorkspaceFolder(file.uri);
+      let base = workspace?.uri ?? file.uri.with({ path: '/' });
+      let node = root;
+      for (const segment of path.relative(base.path, path.dirname(file.uri.path)).split('/').filter(Boolean)) {
+        base = vscode.Uri.joinPath(base, segment);
+        if (!node.children.has(segment)) node.children.set(segment, { folder: base, children: new Map(), files: [], count: 0 });
+        node = node.children.get(segment);
+        node.count += file.count;
+      }
+      node.files.push(file);
+    }
+    return root;
+  }
+  const childrenOf = node => [
+    ...[...node.children.values()].sort((a, b) => a.folder.path.localeCompare(b.folder.path)),
+    ...node.files.sort((a, b) => a.uri.path.localeCompare(b.uri.path))
+  ];
   const tree = {
     onDidChangeTreeData: changed.event,
-    getChildren(file) {
-      if (file) return diagnostics.get(file.uri).map(diagnostic => ({ uri: file.uri, diagnostic }));
+    getChildren(node) {
+      if (node?.folder) return childrenOf(node);
+      if (node) return diagnostics.get(node.uri).map(diagnostic => ({ uri: node.uri, diagnostic }));
       const files = [];
-      diagnostics.forEach((uri, list) => list.length && files.push({ uri, worst: Math.min(...list.map(d => rank[d.severity])) }));
+      diagnostics.forEach((uri, list) => list.length && files.push({ uri, count: list.length, worst: Math.min(...list.map(d => rank[d.severity])) }));
+      if (treeMode) return childrenOf(folderTree(files));
       return files.sort((a, b) => a.worst - b.worst || a.uri.path.localeCompare(b.uri.path));
     },
     getTreeItem(node) {
+      if (node.folder) {
+        const item = new vscode.TreeItem(node.folder, vscode.TreeItemCollapsibleState.Expanded);
+        item.iconPath = vscode.ThemeIcon.Folder;
+        item.description = String(node.count);
+        return item;
+      }
       if (!node.diagnostic) {
-        const item = new vscode.TreeItem(node.uri, vscode.TreeItemCollapsibleState.Expanded);
-        item.description = `${vscode.workspace.asRelativePath(path.dirname(node.uri.path))} · ${diagnostics.get(node.uri).length}`;
+        const item = new vscode.TreeItem(node.uri, treeMode ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.Expanded);
+        item.description = treeMode ? String(node.count) : `${vscode.workspace.asRelativePath(path.dirname(node.uri.path))} · ${node.count}`;
         return item;
       }
       const { diagnostic } = node;
@@ -196,7 +240,7 @@ function activate(context) {
       changed.fire();
       let total = 0;
       diagnostics.forEach((uri, list) => { total += list.length; });
-      view.badge = total ? { value: total, tooltip: `${total} temuan DataTable` } : undefined;
+      view.badge = total ? { value: total, tooltip: `${total} temuan standar` } : undefined;
     }),
     // ponytail: first look at the sidebar scans once; afterwards edits update it live, Scan refreshes the rest.
     view.onDidChangeVisibility(event => {
@@ -207,8 +251,13 @@ function activate(context) {
     vscode.workspace.onDidOpenTextDocument(lint),
     vscode.workspace.onDidChangeTextDocument(event => lint(event.document)),
     vscode.workspace.onDidCloseTextDocument(document => scanned.has(document.uri.toString()) || diagnostics.delete(document.uri)),
+    vscode.commands.registerCommand('laravelBladeNavigator.openRuleSettings', () =>
+      vscode.commands.executeCommand('workbench.action.openSettings', 'laravelBladeNavigator.rules')),
     vscode.workspace.onDidChangeConfiguration(event => {
-      if (event.affectsConfiguration('laravelBladeNavigator.dataTableDiagnostics')) vscode.workspace.textDocuments.forEach(lint);
+      if (!event.affectsConfiguration('laravelBladeNavigator.dataTableDiagnostics') && !event.affectsConfiguration('laravelBladeNavigator.rules')) return;
+      vscode.workspace.textDocuments.forEach(lint);
+      // Closed files only refresh through a scan.
+      if (scanned.size) vscode.commands.executeCommand('laravelBladeNavigator.scanDataTables');
     }));
   // A document link also supports Ctrl+click when a Blade extension owns the
   // language's definition behavior. Resolve lazily, only on hover/click.

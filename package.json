@@ -1,15 +1,16 @@
 {
   "name": "alvinade98-laravel-blade-navigator",
   "displayName": "Ades Laravel Blade Navigator",
-  "description": "Ctrl+click Laravel Blade views, including concatenated controller properties and module namespaces.",
-  "version": "0.1.3",
+  "description": "Ctrl+click Laravel Blade views (controller properties, module namespaces, Yajra DataTables) and flag controllers, services, FormRequests, models and DataTables that break the boilerplate standard.",
+  "version": "0.1.4",
   "publisher": "alvinade98",
   "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Linters"
   ],
   "activationEvents": [
     "onLanguage:php",
@@ -25,16 +26,34 @@
     "commands": [
       {
         "command": "laravelBladeNavigator.scanDataTables",
-        "title": "Scan DataTable yang belum sesuai standar",
+        "title": "Scan file yang belum sesuai standar boilerplate",
         "category": "Laravel Blade Navigator",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "laravelBladeNavigator.viewAsTree",
+        "title": "Tampilkan sebagai tree",
+        "category": "Laravel Blade Navigator",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "laravelBladeNavigator.viewAsList",
+        "title": "Tampilkan sebagai list",
+        "category": "Laravel Blade Navigator",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "laravelBladeNavigator.openRuleSettings",
+        "title": "Pengaturan aturan per layer",
+        "category": "Laravel Blade Navigator",
+        "icon": "$(settings-gear)"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "laravelBladeNavigator",
-          "title": "DataTable Standar",
+          "title": "Standar Boilerplate",
           "icon": "images/datatable.svg"
         }
       ]
@@ -51,7 +70,7 @@
     "viewsWelcome": [
       {
         "view": "laravelBladeNavigator.dataTables",
-        "contents": "Tidak ada DataTable yang menyimpang dari standar.\n[Scan DataTable](command:laravelBladeNavigator.scanDataTables)"
+        "contents": "Tidak ada file yang menyimpang dari standar boilerplate.\n[Scan sekarang](command:laravelBladeNavigator.scanDataTables)"
       }
     ],
     "menus": {
@@ -59,7 +78,22 @@
         {
           "command": "laravelBladeNavigator.scanDataTables",
           "when": "view == laravelBladeNavigator.dataTables",
-          "group": "navigation"
+          "group": "navigation@2"
+        },
+        {
+          "command": "laravelBladeNavigator.viewAsTree",
+          "when": "view == laravelBladeNavigator.dataTables && !laravelBladeNavigator.treeMode",
+          "group": "navigation@1"
+        },
+        {
+          "command": "laravelBladeNavigator.viewAsList",
+          "when": "view == laravelBladeNavigator.dataTables && laravelBladeNavigator.treeMode",
+          "group": "navigation@1"
+        },
+        {
+          "command": "laravelBladeNavigator.openRuleSettings",
+          "when": "view == laravelBladeNavigator.dataTables",
+          "group": "navigation@3"
         }
       ]
     },
@@ -80,7 +114,43 @@
         "laravelBladeNavigator.dataTableDiagnostics": {
           "type": "boolean",
           "default": true,
-          "description": "Show errors/warnings when a Yajra DataTable or its controller departs from the getPageData() → with() → $this->view_path boilerplate."
+          "description": "Show errors/warnings where controllers, services, FormRequests, models and Yajra DataTables depart from the boilerplate (thin controller, service layer, FormRequest validation, Eloquent only, getPageData() → with() → $this->view_path)."
+        },
+        "laravelBladeNavigator.rules.controller": {
+          "type": "boolean",
+          "default": true,
+          "order": 1,
+          "markdownDescription": "**Controller**: wajib `parent::__construct()`; tanpa validasi (`validate`, `Validator::make`), tanpa input dari `Request` biasa / `$request->all()`, tanpa model/Eloquent, `authorize()`/`Gate`, `response()->json()`, tanpa nama view hardcode (`view('ns::...')` → `$this->view.'...'`); info untuk `if`/`foreach`."
+        },
+        "laravelBladeNavigator.rules.service": {
+          "type": "boolean",
+          "default": true,
+          "order": 2,
+          "markdownDescription": "**Service** (`Modules/*/app/Services`): tidak membaca `request()`/`session()`, tidak membuat `response()`/`view()`, tidak return `JsonResponse`/`View`; info bila tidak extends `BaseService`."
+        },
+        "laravelBladeNavigator.rules.formRequest": {
+          "type": "boolean",
+          "default": true,
+          "order": 3,
+          "markdownDescription": "**FormRequest**: `authorize()` harus `return true`."
+        },
+        "laravelBladeNavigator.rules.model": {
+          "type": "boolean",
+          "default": true,
+          "order": 4,
+          "markdownDescription": "**Model**: extends `BaseModel`, bukan `Model`; wajib `protected $schema`."
+        },
+        "laravelBladeNavigator.rules.dataTable": {
+          "type": "boolean",
+          "default": true,
+          "order": 5,
+          "markdownDescription": "**DataTable**: `$this->view` yang selalu null, deklarasi `$tableId`, view cell di-hardcode, dan controller yang memanggil `render()`/`ajax()`/`html()` tanpa `->with($this->getPageData())`."
+        },
+        "laravelBladeNavigator.rules.rawSql": {
+          "type": "boolean",
+          "default": true,
+          "order": 6,
+          "markdownDescription": "**Raw SQL** (semua layer): `DB::table/select/statement/raw` dan `selectRaw`/`whereRaw`/`orderByRaw`/… — Eloquent only. `DB::transaction` tetap boleh di service."
         }
       }
     }
