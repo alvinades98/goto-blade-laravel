@@ -63,16 +63,18 @@ function analyze(source, includeContext = false, includeUnresolved = false) {
   let ast;
   try { ast = parser.parseCode(source); } catch { return []; }
   const references = [];
-  function visit(node, properties, namespace = '', className, canInject = false) {
+  // Controller getPageData() hands both to the DataTable as dynamic properties.
+  const injectable = ['view', 'view_path'];
+  function visit(node, properties, namespace = '', className, canInject = new Set()) {
     if (node.kind === 'namespace') namespace = node.name || '';
     if (node.kind === 'class') {
       properties = classProperties(node);
       className = [namespace, node.name?.name].filter(Boolean).join('\\');
-      canInject = !node.isAnonymous;
+      canInject = new Set(node.isAnonymous ? [] : injectable);
       function check(current) {
         if (current !== node && current.kind === 'class') return;
-        if (current.kind === 'property' && current.name?.name === 'view') canInject = false;
-        if (['assign', 'assignref', 'pre', 'post'].includes(current.kind) && propertyName(current.left || current.what) === 'view') canInject = false;
+        if (current.kind === 'property') canInject.delete(current.name?.name);
+        if (['assign', 'assignref', 'pre', 'post'].includes(current.kind)) canInject.delete(propertyName(current.left || current.what));
         children(current).forEach(check);
       }
       check(node);
@@ -85,12 +87,15 @@ function analyze(source, includeContext = false, includeUnresolved = false) {
         const reference = { name: value, start: expression.loc.start.offset, end: expression.loc.end.offset };
         if (includeContext) reference.viewBase = evaluate(properties.get('view'), properties);
         references.push(reference);
-      } else if (includeUnresolved && canInject && expression?.loc) {
+      } else if (includeUnresolved && expression?.loc) {
         const placeholder = '__BLADE_EXTERNAL_VIEW__';
-        const value = evaluate(expression, new Map([...properties, ['view', { kind: 'string', value: placeholder }]]));
-        if (typeof value === 'string' && value.includes(placeholder)) {
-          references.push({ start: expression.loc.start.offset, end: expression.loc.end.offset,
-            className, viewTemplate: value, placeholder });
+        for (const property of canInject) {
+          const value = evaluate(expression, new Map([...properties, [property, { kind: 'string', value: placeholder }]]));
+          if (typeof value === 'string' && value.includes(placeholder)) {
+            references.push({ start: expression.loc.start.offset, end: expression.loc.end.offset,
+              className, viewTemplate: value, placeholder, property });
+            break;
+          }
         }
       }
     }

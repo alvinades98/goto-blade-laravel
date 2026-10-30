@@ -54,3 +54,12 @@ test('DataTable view can come from a controller method wrapping getPageData', ()
   assert.deepEqual(dataTableViewBases(source, target), ['upm::monev.daftar-survey']);
   assert.deepEqual(dataTableViewBases(source.replace('$this->getPageData() +', "['view' => 'other'] +"), target), []);
 });
+test('view_path from getPageData or explicit with is clickable', () => {
+  const [ref] = analyze(table.replace('$this->view.', '$this->view_path.'), false, true);
+  assert.equal(ref.property, 'view_path');
+  const [base] = dataTableViewBases(controller('SurveyDataTable', '$table->forScope(1)->with($this->getPageData())'), ref.className, ref.property);
+  assert.equal(ref.viewTemplate.replace(ref.placeholder, base), 'upm::monev.daftar-survey.action');
+  assert.deepEqual(dataTableViewBases(controller('SurveyDataTable', "$table->with(['view_path' => $this->view])"), target, 'view_path'), ['upm::monev.daftar-survey']);
+  assert.deepEqual(dataTableViewBases(controller('SurveyDataTable', "$table->with(['view' => $this->view])"), target, 'view_path'), []);
+  assert.deepEqual(analyze(table.replace('$this->view.', '$this->view_path.').replace('function dataTable', 'protected $view_path; function dataTable'), false, true), []);
+});

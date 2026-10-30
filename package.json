@@ -2,7 +2,7 @@
   "name": "alvinade98-laravel-blade-navigator",
   "displayName": "Ades Laravel Blade Navigator",
   "description": "Ctrl+click Laravel Blade views, including concatenated controller properties and module namespaces.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "alvinade98",
   "license": "MIT",
   "engines": {
@@ -22,6 +22,47 @@
     "package": "vsce package --allow-missing-repository"
   },
   "contributes": {
+    "commands": [
+      {
+        "command": "laravelBladeNavigator.scanDataTables",
+        "title": "Scan DataTable yang belum sesuai standar",
+        "category": "Laravel Blade Navigator",
+        "icon": "$(refresh)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "laravelBladeNavigator",
+          "title": "DataTable Standar",
+          "icon": "images/datatable.svg"
+        }
+      ]
+    },
+    "views": {
+      "laravelBladeNavigator": [
+        {
+          "id": "laravelBladeNavigator.dataTables",
+          "name": "Belum Sesuai Standar",
+          "icon": "images/datatable.svg"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "laravelBladeNavigator.dataTables",
+        "contents": "Tidak ada DataTable yang menyimpang dari standar.\n[Scan DataTable](command:laravelBladeNavigator.scanDataTables)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "laravelBladeNavigator.scanDataTables",
+          "when": "view == laravelBladeNavigator.dataTables",
+          "group": "navigation"
+        }
+      ]
+    },
     "configuration": {
       "title": "Ades Laravel Blade Navigator",
       "properties": {
@@ -35,6 +76,11 @@
             }
           },
           "description": "Custom view namespaces mapped to view directories relative to the Laravel project root. Example: {\"mahasiswa\": [\"Modules/Mahasiswa/resources/views\"]}."
+        },
+        "laravelBladeNavigator.dataTableDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show errors/warnings when a Yajra DataTable or its controller departs from the getPageData() → with() → $this->view_path boilerplate."
         }
       }
     }

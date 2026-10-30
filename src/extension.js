@@ -6,6 +6,7 @@ const { analyze } = require('./analyzer');
 const { resolveView } = require('./resolver');
 const { bladeReferences, resolveBladeReference, controllerViewBases } = require('./blade');
 const { dataTableViewBases } = require('./datatable');
+const { dataTableIssues, yajraDeclaresView } = require('./lint');
 
 async function isFile(uri) {
   try { return !!((await vscode.workspace.fs.stat(uri)).type & vscode.FileType.File); }
@@ -87,7 +88,7 @@ function activate(context) {
               source = open ? open.getText() : Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
             } catch { continue; }
             const found = reference.viewTemplate
-              ? dataTableViewBases(source, reference.className)
+              ? dataTableViewBases(source, reference.className, reference.property)
               : await controllerViewBases(analyze(source, true), relativePath, resolve);
             for (const base of found) bases.add(base);
           }
@@ -109,6 +110,106 @@ function activate(context) {
     }
   };
   context.subscriptions.push(vscode.languages.registerDefinitionProvider(selector, provider));
+
+  const diagnostics = vscode.languages.createDiagnosticCollection('laravelBladeNavigator');
+  const vendorView = new Map();
+  const severity = { error: vscode.DiagnosticSeverity.Error, warning: vscode.DiagnosticSeverity.Warning, info: vscode.DiagnosticSeverity.Information };
+  const enabled = uri => vscode.workspace.getConfiguration('laravelBladeNavigator', uri).get('dataTableDiagnostics', true);
+  function lint(document) {
+    if (document.languageId !== 'php' || document.uri.path.endsWith('.blade.php') || !enabled(document.uri)) return diagnostics.delete(document.uri);
+    return lintText(document.uri, document.getText());
+  }
+  async function lintText(uri, text) {
+    if (!text.includes('DataTable')) return diagnostics.delete(uri), 0;
+    const root = await projectRoot({ uri }, { isCancellationRequested: false });
+    if (root && !vendorView.has(root.toString())) {
+      // ponytail: read once per session; reload the window after patching vendor.
+      const vendor = vscode.Uri.joinPath(root, 'vendor/yajra/laravel-datatables-buttons/src/Services/DataTable.php');
+      let source;
+      try { source = Buffer.from(await vscode.workspace.fs.readFile(vendor)).toString('utf8'); } catch {}
+      vendorView.set(root.toString(), yajraDeclaresView(source));
+    }
+    const declaresView = !!root && vendorView.get(root.toString());
+    // Closed files have no TextDocument; compute positions from the text itself.
+    const lineStarts = [0];
+    for (let i = text.indexOf('\n'); i !== -1; i = text.indexOf('\n', i + 1)) lineStarts.push(i + 1);
+    const positionAt = offset => {
+      const line = lineStarts.findLastIndex(start => start <= offset);
+      return new vscode.Position(line, offset - lineStarts[line]);
+    };
+    const issues = dataTableIssues(text, { declaresView });
+    diagnostics.set(uri, issues.map(issue => {
+      const diagnostic = new vscode.Diagnostic(new vscode.Range(positionAt(issue.start), positionAt(issue.end)), issue.message, severity[issue.severity]);
+      diagnostic.source = 'Laravel DataTable';
+      return diagnostic;
+    }));
+    return issues.length;
+  }
+  // Results of a workspace scan stay in the Problems panel after their file is closed.
+  const scanned = new Set();
+  const viewId = 'laravelBladeNavigator.dataTables';
+  context.subscriptions.push(vscode.commands.registerCommand('laravelBladeNavigator.scanDataTables', () =>
+    vscode.window.withProgress({ location: { viewId }, title: 'Scan DataTable' }, async () => {
+      const files = await vscode.workspace.findFiles('**/{app,Modules}/**/*.php', '**/{vendor,node_modules}/**');
+      for (const uri of files) {
+        if (uri.path.endsWith('.blade.php') || !enabled(uri)) continue;
+        const open = vscode.workspace.textDocuments.find(doc => doc.uri.toString() === uri.toString());
+        let text;
+        try { text = open ? open.getText() : Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8'); } catch { continue; }
+        if (await lintText(uri, text)) scanned.add(uri.toString());
+      }
+      await vscode.commands.executeCommand(viewId + '.focus');
+    })));
+
+  // Sidebar: files that break the DataTable standard, each expanding to its findings.
+  const rank = { [vscode.DiagnosticSeverity.Error]: 0, [vscode.DiagnosticSeverity.Warning]: 1, [vscode.DiagnosticSeverity.Information]: 2 };
+  const icon = { 0: ['error', 'problemsErrorIcon.foreground'], 1: ['warning', 'problemsWarningIcon.foreground'], 2: ['info', 'problemsInfoIcon.foreground'] };
+  const changed = new vscode.EventEmitter();
+  const tree = {
+    onDidChangeTreeData: changed.event,
+    getChildren(file) {
+      if (file) return diagnostics.get(file.uri).map(diagnostic => ({ uri: file.uri, diagnostic }));
+      const files = [];
+      diagnostics.forEach((uri, list) => list.length && files.push({ uri, worst: Math.min(...list.map(d => rank[d.severity])) }));
+      return files.sort((a, b) => a.worst - b.worst || a.uri.path.localeCompare(b.uri.path));
+    },
+    getTreeItem(node) {
+      if (!node.diagnostic) {
+        const item = new vscode.TreeItem(node.uri, vscode.TreeItemCollapsibleState.Expanded);
+        item.description = `${vscode.workspace.asRelativePath(path.dirname(node.uri.path))} · ${diagnostics.get(node.uri).length}`;
+        return item;
+      }
+      const { diagnostic } = node;
+      const [id, color] = icon[rank[diagnostic.severity]];
+      const item = new vscode.TreeItem(diagnostic.message);
+      item.description = `baris ${diagnostic.range.start.line + 1}`;
+      item.tooltip = diagnostic.message;
+      item.iconPath = new vscode.ThemeIcon(id, new vscode.ThemeColor(color));
+      item.command = { command: 'vscode.open', title: 'Buka', arguments: [node.uri, { selection: diagnostic.range }] };
+      return item;
+    }
+  };
+  const view = vscode.window.createTreeView(viewId, { treeDataProvider: tree, showCollapseAll: true });
+  let autoScanned = false;
+  context.subscriptions.push(view, changed,
+    vscode.languages.onDidChangeDiagnostics(() => {
+      changed.fire();
+      let total = 0;
+      diagnostics.forEach((uri, list) => { total += list.length; });
+      view.badge = total ? { value: total, tooltip: `${total} temuan DataTable` } : undefined;
+    }),
+    // ponytail: first look at the sidebar scans once; afterwards edits update it live, Scan refreshes the rest.
+    view.onDidChangeVisibility(event => {
+      if (event.visible && !autoScanned) { autoScanned = true; vscode.commands.executeCommand('laravelBladeNavigator.scanDataTables'); }
+    }));
+  vscode.workspace.textDocuments.forEach(lint);
+  context.subscriptions.push(diagnostics,
+    vscode.workspace.onDidOpenTextDocument(lint),
+    vscode.workspace.onDidChangeTextDocument(event => lint(event.document)),
+    vscode.workspace.onDidCloseTextDocument(document => scanned.has(document.uri.toString()) || diagnostics.delete(document.uri)),
+    vscode.workspace.onDidChangeConfiguration(event => {
+      if (event.affectsConfiguration('laravelBladeNavigator.dataTableDiagnostics')) vscode.workspace.textDocuments.forEach(lint);
+    }));
   // A document link also supports Ctrl+click when a Blade extension owns the
   // language's definition behavior. Resolve lazily, only on hover/click.
   const origins = new WeakMap();

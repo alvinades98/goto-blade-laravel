@@ -8,7 +8,7 @@ const parser = new Engine({ parser: { suppressErrors: true } });
  * getPageData/pageData follows the application's shared controller convention.
  * No PHP execution, folder-name guesses, or short-class-name matching.
  */
-function dataTableViewBases(source, targetClass) {
+function dataTableViewBases(source, targetClass, property = 'view') {
   let ast;
   try { ast = parser.parseCode(source); } catch { return []; }
   const bases = new Set();
@@ -59,9 +59,9 @@ function dataTableViewBases(source, targetClass) {
                 const args = receiver.arguments;
                 const first = args[0];
                 let value;
-                if (first?.kind === 'string' && first.value === 'view') value = evaluate(args[1], properties);
+                if (first?.kind === 'string' && first.value === property) value = evaluate(args[1], properties);
                 else if (first?.kind === 'array') {
-                  const entry = first.items.find(item => item.key?.value === 'view');
+                  const entry = first.items.find(item => item.key?.value === property);
                   value = evaluate(entry?.value, properties);
                 } else if (first?.kind === 'propertylookup' && first.what?.name === 'this' && first.offset?.name === 'pageData') value = base;
                 else if (hasPageData(first)) value = base;
